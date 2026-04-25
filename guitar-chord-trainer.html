@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Electric Guitar Chord Trainer</title>
+<script src="https://cdn.jsdelivr.net/npm/tone@14/build/Tone.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0d0d1a;
+  --card:     #1a1a2e;
+  --card2:    #16213e;
+  --accent:   #e94560;
+  --text:     #eaeaea;
+  --text2:    #7a7a9a;
+  --success:  #4ade80;
+  --error:    #f87171;
+  --warn:     #facc15;
+  --nut:      #c8a96e;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+/* ── Screens ── */
+.screen { display: none; width: 100%; max-width: 520px; flex-direction: column; align-items: center; }
+.screen.active { display: flex; }
+
+/* ── Menu ── */
+.logo {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: -1px;
+  margin-bottom: 2px;
+  text-align: center;
+}
+.logo-sub {
+  color: var(--text2);
+  font-size: 0.78rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 40px;
+  text-align: center;
+}
+
+.diff-grid { display: grid; gap: 14px; width: 100%; }
+
+.diff-btn {
+  padding: 18px 22px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1rem;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.2s;
+}
+.diff-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.diff-btn.beginner     { border-color: var(--success); }
+.diff-btn.beginner:hover { box-shadow: 0 10px 30px rgba(74,222,128,0.15); }
+.diff-btn.intermediate { border-color: var(--warn); }
+.diff-btn.intermediate:hover { box-shadow: 0 10px 30px rgba(250,204,21,0.15); }
+.diff-btn.advanced     { border-color: var(--error); }
+.diff-btn.advanced:hover { box-shadow: 0 10px 30px rgba(248,113,113,0.15); }
+
+.diff-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.beginner .diff-dot     { background: var(--success); }
+.intermediate .diff-dot { background: var(--warn); }
+.advanced .diff-dot     { background: var(--error); }
+
+.diff-text { display: flex; flex-direction: column; gap: 3px; }
+.diff-name { font-weight: 700; font-size: 1.05rem; }
+.diff-desc { font-size: 0.78rem; color: var(--text2); }
+
+/* ── Game Screen ── */
+.progress-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.progress-track {
+  flex: 1;
+  height: 5px;
+  background: var(--card);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.progress-label { font-size: 0.8rem; color: var(--text2); white-space: nowrap; }
+
+.score-badge {
+  display: flex;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--text2);
+  margin-bottom: 20px;
+}
+.badge-correct  { color: var(--success); font-weight: 700; }
+.badge-incorrect{ color: var(--error);   font-weight: 700; }
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 28px 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 400px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--card2));
+}
+
+.chord-header { text-align: center; }
+.chord-name {
+  font-size: 3.8rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -2px;
+}
+.chord-type {
+  font-size: 0.8rem;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 6px;
+}
+
+/* Pulsing reveal indicator */
+.pulse-row { display: flex; gap: 8px; align-items: center; padding: 16px 0; }
+.pulse-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pdot 1.2s ease-in-out infinite;
+}
+.pulse-dot:nth-child(2) { animation-delay: 0.2s; }
+.pulse-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes pdot {
+  0%,100% { opacity: 0.25; transform: scale(0.75); }
+  50%      { opacity: 1;    transform: scale(1.2);  }
+}
+
+/* Diagram */
+.diagram-wrap { opacity: 0; transition: opacity 0.55s ease; }
+.diagram-wrap.visible { opacity: 1; }
+
+/* Tuning label */
+.tuning-label {
+  font-size: 0.7rem;
+  color: var(--text2);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* Buttons */
+.play-btn {
+  background: none;
+  border: 1.5px solid var(--text2);
+  color: var(--text2);
+  padding: 8px 22px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.2s;
+}
+.play-btn:hover { border-color: var(--text); color: var(--text); }
+
+.answer-row { display: flex; gap: 12px; width: 100%; }
+.btn-miss, .btn-got {
+  flex: 1;
+  padding: 13px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.btn-miss { background: #3a1a1a; color: var(--error); border: 1.5px solid var(--error); }
+.btn-miss:hover { background: var(--error); color: #fff; }
+.btn-got  { background: #1a3a1a; color: var(--success); border: 1.5px solid var(--success); }
+.btn-got:hover { background: var(--success); color: #0d1a0d; }
+
+/* ── Results ── */
+.results-card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 40px 28px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.results-title { font-size: 1.3rem; font-weight: 700; color: var(--text2); }
+
+.score-ring {
+  width: 130px; height: 130px;
+  border-radius: 50%;
+  border: 4px solid var(--accent);
+  box-shadow: 0 0 30px rgba(233,69,96,0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.score-ring .big   { font-size: 2.4rem; font-weight: 900; line-height: 1; }
+.score-ring .small { font-size: 0.7rem; color: var(--text2); letter-spacing: 2px; text-transform: uppercase; }
+
+.breakdown { display: flex; gap: 32px; }
+.bk-stat { text-align: center; }
+.bk-stat .num  { font-size: 1.6rem; font-weight: 800; }
+.bk-stat .lbl  { font-size: 0.72rem; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.bk-correct .num   { color: var(--success); }
+.bk-incorrect .num { color: var(--error); }
+
+.result-msg { font-size: 1rem; font-weight: 600; text-align: center; color: var(--text2); }
+
+.result-btns { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: all 0.2s;
+}
+.btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-secondary {
+  background: none;
+  color: var(--text2);
+  border: 1.5px solid var(--card2);
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--text2); color: var(--text); }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ MENU ═══════════════════════ -->
+<div id="screen-menu" class="screen active">
+  <div class="logo">Electric Guitar Chord Trainer</div>
+  <div class="logo-sub">Standard Tuning &nbsp;·&nbsp; E A D G B e</div>
+
+  <div class="diff-grid">
+    <button class="diff-btn beginner" onclick="startGame('beginner')">
+      <div class="diff-dot"></div>
+      <div class="diff-text">
+        <span class="diff-name">Beginner</span>
+        <span class="diff-desc">Open chords &mdash; Em, Am, E, A, D, G, C, Dm, E7, Em7</span>
+      </div>
+    </button>
+    <button class="diff-btn intermediate" onclick="startGame('intermediate')">
+      <div class="diff-dot"></div>
+      <div class="diff-text">
+        <span class="diff-name">Intermediate</span>
+        <span class="diff-desc">Barre &amp; 7th chords &mdash; F, Bm, Am7, D7, G7, Cadd9 &amp; more</span>
+      </div>
+    </button>
+    <button class="diff-btn advanced" onclick="startGame('advanced')">
+      <div class="diff-dot"></div>
+      <div class="diff-text">
+        <span class="diff-name">Advanced</span>
+        <span class="diff-desc">Power chords &amp; extensions &mdash; E5, G5, F#m, Fmaj7, Dm7 &amp; more</span>
+      </div>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ GAME ═══════════════════════ -->
+<div id="screen-game" class="screen">
+  <div class="progress-row">
+    <div class="progress-track">
+      <div class="progress-fill" id="prog-fill" style="width:0%"></div>
+    </div>
+    <div class="progress-label" id="prog-label">1 / 10</div>
+  </div>
+
+  <div class="score-badge">
+    <span>Correct: <span class="badge-correct" id="hud-correct">0</span></span>
+    <span>&nbsp;|&nbsp;</span>
+    <span>Missed: <span class="badge-incorrect" id="hud-incorrect">0</span></span>
+  </div>
+
+  <div class="card">
+    <div class="chord-header">
+      <div class="chord-name" id="chord-name">Em</div>
+      <div class="chord-type" id="chord-type">Minor</div>
+    </div>
+
+    <div class="pulse-row" id="pulse-row">
+      <div class="pulse-dot"></div>
+      <div class="pulse-dot"></div>
+      <div class="pulse-dot"></div>
+    </div>
+
+    <div class="diagram-wrap" id="diagram-wrap">
+      <div id="diagram-svg"></div>
+      <div class="tuning-label" style="text-align:center;margin-top:6px;">E &nbsp; A &nbsp; D &nbsp; G &nbsp; B &nbsp; e</div>
+    </div>
+
+    <button class="play-btn hidden" id="play-btn" onclick="playCurrentChord()">&#9654; Play Again</button>
+
+    <div class="answer-row hidden" id="answer-row">
+      <button class="btn-miss" onclick="answer(false)">&#10007; Missed It</button>
+      <button class="btn-got"  onclick="answer(true)">&#10003; Got It</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ RESULTS ═══════════════════════ -->
+<div id="screen-results" class="screen">
+  <div class="results-card">
+    <div class="results-title">Session Complete</div>
+
+    <div class="score-ring">
+      <span class="big"  id="res-score">0/10</span>
+      <span class="small">Score</span>
+    </div>
+
+    <div class="breakdown">
+      <div class="bk-stat bk-correct">
+        <div class="num" id="res-correct">0</div>
+        <div class="lbl">Got It</div>
+      </div>
+      <div class="bk-stat bk-incorrect">
+        <div class="num" id="res-incorrect">0</div>
+        <div class="lbl">Missed</div>
+      </div>
+    </div>
+
+    <div class="result-msg" id="res-msg"></div>
+
+    <div class="result-btns">
+      <button class="btn-primary"   onclick="retryGame()">Play Again</button>
+      <button class="btn-secondary" onclick="showMenu()">Change Difficulty</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// CHORD DATA
+// positions[i] = fret on string i (low E=0 … high e=5)
+//   0 = open,  -1 = muted
+// fingers[i]   = finger number (1=index … 4=pinky, 0=open/muted)
+// startFret    = lowest fret shown in the box (default 1)
+// barre        = { fret, from, to } — index finger bar across strings
+// ════════════════════════════════════════════════════
+const CHORDS = {
+  // ─── BEGINNER ───────────────────────────────────
+  Em:    { name:'Em',    type:'Minor',          positions:[ 0, 2, 2, 0, 0, 0], fingers:[0,2,3,0,0,0], startFret:1 },
+  Am:    { name:'Am',    type:'Minor',          positions:[-1, 0, 2, 2, 1, 0], fingers:[0,0,2,3,1,0], startFret:1 },
+  E:     { name:'E',     type:'Major',          positions:[ 0, 2, 2, 1, 0, 0], fingers:[0,2,3,1,0,0], startFret:1 },
+  A:     { name:'A',     type:'Major',          positions:[-1, 0, 2, 2, 2, 0], fingers:[0,0,1,2,3,0], startFret:1 },
+  D:     { name:'D',     type:'Major',          positions:[-1,-1, 0, 2, 3, 2], fingers:[0,0,0,1,3,2], startFret:1 },
+  G:     { name:'G',     type:'Major',          positions:[ 3, 2, 0, 0, 3, 3], fingers:[2,1,0,0,3,4], startFret:1 },
+  C:     { name:'C',     type:'Major',          positions:[-1, 3, 2, 0, 1, 0], fingers:[0,3,2,0,1,0], startFret:1 },
+  Dm:    { name:'Dm',    type:'Minor',          positions:[-1,-1, 0, 2, 3, 1], fingers:[0,0,0,2,3,1], startFret:1 },
+  E7:    { name:'E7',    type:'Dominant 7th',   positions:[ 0, 2, 0, 1, 0, 0], fingers:[0,2,0,1,0,0], startFret:1 },
+  Em7:   { name:'Em7',   type:'Minor 7th',      positions:[ 0, 2, 0, 0, 0, 0], fingers:[0,2,0,0,0,0], startFret:1 },
+
+  // ─── INTERMEDIATE ────────────────────────────────
+  F:     { name:'F',     type:'Major (Barre)',   positions:[ 1, 1, 2, 3, 3, 1], fingers:[1,1,2,3,4,1], startFret:1, barre:{fret:1,from:0,to:5} },
+  Bm:    { name:'Bm',    type:'Minor (Barre)',   positions:[-1, 2, 4, 4, 3, 2], fingers:[0,1,3,4,2,1], startFret:2, barre:{fret:2,from:1,to:5} },
+  Cadd9: { name:'Cadd9', type:'Add 9',           positions:[-1, 3, 2, 0, 3, 3], fingers:[0,2,1,0,3,4], startFret:1 },
+  Am7:   { name:'Am7',   type:'Minor 7th',       positions:[-1, 0, 2, 0, 1, 0], fingers:[0,0,2,0,1,0], startFret:1 },
+  A7:    { name:'A7',    type:'Dominant 7th',    positions:[-1, 0, 2, 0, 2, 0], fingers:[0,0,2,0,3,0], startFret:1 },
+  D7:    { name:'D7',    type:'Dominant 7th',    positions:[-1,-1, 0, 2, 1, 2], fingers:[0,0,0,3,1,2], startFret:1 },
+  G7:    { name:'G7',    type:'Dominant 7th',    positions:[ 3, 2, 0, 0, 0, 1], fingers:[3,2,0,0,0,1], startFret:1 },
+  C7:    { name:'C7',    type:'Dominant 7th',    positions:[-1, 3, 2, 3, 1, 0], fingers:[0,3,2,4,1,0], startFret:1 },
+  Asus2: { name:'Asus2', type:'Suspended 2nd',   positions:[-1, 0, 2, 2, 0, 0], fingers:[0,0,1,2,0,0], startFret:1 },
+  Dsus4: { name:'Dsus4', type:'Suspended 4th',   positions:[-1,-1, 0, 2, 3, 3], fingers:[0,0,0,1,3,4], startFret:1 },
+
+  // ─── ADVANCED ────────────────────────────────────
+  E5:    { name:'E5',    type:'Power Chord',     positions:[ 0, 2, 2,-1,-1,-1], fingers:[0,1,2,0,0,0], startFret:1 },
+  A5:    { name:'A5',    type:'Power Chord',     positions:[-1, 0, 2, 2,-1,-1], fingers:[0,0,1,2,0,0], startFret:1 },
+  D5:    { name:'D5',    type:'Power Chord',     positions:[-1,-1, 0, 2, 3,-1], fingers:[0,0,0,1,3,0], startFret:1 },
+  G5:    { name:'G5',    type:'Power Chord',     positions:[ 3, 5, 5,-1,-1,-1], fingers:[1,3,4,0,0,0], startFret:3 },
+  C5:    { name:'C5',    type:'Power Chord',     positions:[-1, 3, 5, 5,-1,-1], fingers:[0,1,3,4,0,0], startFret:3 },
+  F5:    { name:'F5',    type:'Power Chord',     positions:[ 1, 3, 3,-1,-1,-1], fingers:[1,3,4,0,0,0], startFret:1 },
+  B5:    { name:'B5',    type:'Power Chord',     positions:[-1, 2, 4, 4,-1,-1], fingers:[0,1,3,4,0,0], startFret:2 },
+  Fsm:   { name:'F\u266fm',type:'Minor (Barre)', positions:[ 2, 4, 4, 2, 2, 2], fingers:[1,3,4,1,1,1], startFret:2, barre:{fret:2,from:0,to:5} },
+  Fmaj7: { name:'Fmaj7', type:'Major 7th',       positions:[-1,-1, 3, 2, 1, 0], fingers:[0,0,3,2,1,0], startFret:1 },
+  Cmaj7: { name:'Cmaj7', type:'Major 7th',       positions:[-1, 3, 2, 0, 0, 0], fingers:[0,3,2,0,0,0], startFret:1 },
+  Dm7:   { name:'Dm7',   type:'Minor 7th',       positions:[-1,-1, 0, 2, 1, 1], fingers:[0,0,0,3,1,1], startFret:1 },
+  B7:    { name:'B7',    type:'Dominant 7th',    positions:[-1, 2, 1, 2, 0, 2], fingers:[0,3,1,4,0,2], startFret:1 },
+};
+
+const CHORD_SETS = {
+  beginner:     ['Em','Am','E','A','D','G','C','Dm','E7','Em7'],
+  intermediate: ['F','Bm','Cadd9','Am7','A7','D7','G7','C7','Asus2','Dsus4'],
+  advanced:     ['E5','A5','D5','G5','C5','F5','B5','Fsm','Fmaj7','Cmaj7','Dm7','B7'],
+};
+
+// ════════════════════════════════════════════════════
+// AUDIO  —  Tone.js PluckSynth (Karplus-Strong)
+// Open MIDI: E2=40  A2=45  D3=50  G3=55  B3=59  E4=64
+// ════════════════════════════════════════════════════
+const OPEN_MIDI = [40, 45, 50, 55, 59, 64];
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function midiToNote(midi) {
+  return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+let synths = null;
+
+async function initAudio() {
+  if (synths) return;
+  await Tone.start();
+  Tone.Destination.volume.value = -6;
+  synths = Array.from({length: 6}, () =>
+    new Tone.PluckSynth({ attackNoise: 1.1, dampening: 3800, resonance: 0.97 })
+      .toDestination()
+  );
+}
+
+function playChord(positions) {
+  if (!synths) return;
+  const now = Tone.now();
+  positions.forEach((fret, i) => {
+    if (fret < 0) return;
+    synths[i].triggerAttack(midiToNote(OPEN_MIDI[i] + fret), now + i * 0.045);
+  });
+}
+
+// ════════════════════════════════════════════════════
+// SVG CHORD BOX GENERATOR
+// ════════════════════════════════════════════════════
+// Layout constants
+const SW = 168, SH = 218;
+const PL = 22, PR = 14, PT = 46, PB = 12;
+const N_STR = 6, N_FRET = 5;
+const strW = SW - PL - PR;                      // 132
+const fretH = SH - PT - PB;                     // 160
+const strSp = strW / (N_STR - 1);               // 26.4
+const fretSp = fretH / N_FRET;                  // 32
+const sx = s => PL + s * strSp;                 // string x
+const fy = f => PT + f * fretSp;                // fret line y  (f=0 = nut/top)
+const dotY = f => PT + (f - 0.5) * fretSp;     // center of fret space f (1-based)
+const DOT_R = 11;
+
+function buildSVG(chord) {
+  const { positions, fingers, startFret = 1, barre } = chord;
+  const p = [];
+
+  p.push(`<svg width="${SW}" height="${SH}" viewBox="0 0 ${SW} ${SH}" xmlns="http://www.w3.org/2000/svg">`);
+  p.push(`<rect width="${SW}" height="${SH}" fill="#1a1a2e" rx="10"/>`);
+
+  // X / O indicators above nut
+  for (let s = 0; s < 6; s++) {
+    const x = sx(s), y = PT - 16, fret = positions[s];
+    if (fret === -1) {
+      const d = 5;
+      p.push(`<line x1="${x-d}" y1="${y-d}" x2="${x+d}" y2="${y+d}" stroke="#f87171" stroke-width="2.5" stroke-linecap="round"/>`);
+      p.push(`<line x1="${x+d}" y1="${y-d}" x2="${x-d}" y2="${y+d}" stroke="#f87171" stroke-width="2.5" stroke-linecap="round"/>`);
+    } else if (fret === 0) {
+      p.push(`<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="#4ade80" stroke-width="2"/>`);
+    }
+  }
+
+  // Nut or top line + fret label
+  if (startFret === 1) {
+    p.push(`<rect x="${PL - 1}" y="${fy(0) - 4}" width="${strW + 2}" height="7" rx="3" fill="#c8a96e"/>`);
+  } else {
+    p.push(`<line x1="${PL}" y1="${fy(0)}" x2="${sx(5)}" y2="${fy(0)}" stroke="#55557a" stroke-width="2"/>`);
+    p.push(`<text x="${PL - 4}" y="${dotY(1) + 4}" fill="#7a7a9a" font-size="10" font-family="Segoe UI,sans-serif" text-anchor="end">${startFret}fr</text>`);
+  }
+
+  // Fret lines
+  for (let f = 1; f <= N_FRET; f++) {
+    p.push(`<line x1="${PL}" y1="${fy(f)}" x2="${sx(5)}" y2="${fy(f)}" stroke="#2a2a4a" stroke-width="1.5"/>`);
+  }
+
+  // String lines (thicker = lower pitch)
+  for (let s = 0; s < 6; s++) {
+    const x = sx(s);
+    const sw2 = (1 + (5 - s) * 0.28).toFixed(1);
+    p.push(`<line x1="${x}" y1="${fy(0)}" x2="${x}" y2="${fy(N_FRET)}" stroke="#44446a" stroke-width="${sw2}"/>`);
+  }
+
+  // Barre bar
+  if (barre) {
+    const rf = barre.fret - startFret + 1;
+    const cy = dotY(rf);
+    const x1 = sx(barre.from), x2 = sx(barre.to);
+    p.push(`<rect x="${x1 - DOT_R}" y="${cy - DOT_R}" width="${x2 - x1 + DOT_R * 2}" height="${DOT_R * 2}" rx="${DOT_R}" fill="#e94560"/>`);
+    p.push(`<text x="${(x1 + x2) / 2}" y="${cy + 4}" fill="#fff" font-size="11" font-weight="700" font-family="Segoe UI,sans-serif" text-anchor="middle">1</text>`);
+  }
+
+  // Individual finger dots
+  for (let s = 0; s < 6; s++) {
+    const fret = positions[s];
+    if (fret <= 0) continue;
+    const finger = fingers[s];
+    // Skip barre positions (already drawn)
+    if (barre && finger === 1 && fret === barre.fret) continue;
+    const rf = fret - startFret + 1;
+    if (rf < 1 || rf > N_FRET) continue;
+    const cx = sx(s), cy = dotY(rf);
+    p.push(`<circle cx="${cx}" cy="${cy}" r="${DOT_R}" fill="#e94560"/>`);
+    if (finger > 0) {
+      p.push(`<text x="${cx}" y="${cy + 4}" fill="#fff" font-size="11" font-weight="700" font-family="Segoe UI,sans-serif" text-anchor="middle">${finger}</text>`);
+    }
+  }
+
+  p.push('</svg>');
+  return p.join('');
+}
+
+// ════════════════════════════════════════════════════
+// GAME STATE
+// ════════════════════════════════════════════════════
+const state = {
+  difficulty: 'beginner',
+  deck: [],
+  index: 0,
+  correct: 0,
+  incorrect: 0,
+  revealTimer: null,
+};
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+async function startGame(difficulty) {
+  await initAudio();
+  state.difficulty = difficulty;
+  state.deck  = shuffle(CHORD_SETS[difficulty]).slice(0, 10).map(k => CHORDS[k]);
+  state.index = 0;
+  state.correct = 0;
+  state.incorrect = 0;
+  showScreen('game');
+  showQuestion();
+}
+
+function showQuestion() {
+  const chord = state.deck[state.index];
+  const total = state.deck.length;
+
+  // Progress bar
+  document.getElementById('prog-fill').style.width = (state.index / total * 100) + '%';
+  document.getElementById('prog-label').textContent = `${state.index + 1} / ${total}`;
+
+  // HUD
+  document.getElementById('hud-correct').textContent   = state.correct;
+  document.getElementById('hud-incorrect').textContent = state.incorrect;
+
+  // Chord name
+  document.getElementById('chord-name').textContent = chord.name;
+  document.getElementById('chord-type').textContent = chord.type;
+
+  // Reset diagram
+  const wrap = document.getElementById('diagram-wrap');
+  wrap.classList.remove('visible');
+  document.getElementById('diagram-svg').innerHTML = '';
+
+  // Show pulse, hide controls
+  document.getElementById('pulse-row').classList.remove('hidden');
+  document.getElementById('play-btn').classList.add('hidden');
+  document.getElementById('answer-row').classList.add('hidden');
+
+  // Reveal after 1.5 s
+  clearTimeout(state.revealTimer);
+  state.revealTimer = setTimeout(revealChord, 1500);
+}
+
+function revealChord() {
+  const chord = state.deck[state.index];
+
+  // Render diagram
+  document.getElementById('diagram-svg').innerHTML = buildSVG(chord);
+
+  // Fade in
+  const wrap = document.getElementById('diagram-wrap');
+  requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('visible')));
+
+  // Swap controls
+  document.getElementById('pulse-row').classList.add('hidden');
+  document.getElementById('play-btn').classList.remove('hidden');
+  document.getElementById('answer-row').classList.remove('hidden');
+
+  // Play chord
+  playChord(chord.positions);
+}
+
+function playCurrentChord() {
+  playChord(state.deck[state.index].positions);
+}
+
+function answer(got) {
+  if (got) state.correct++;
+  else     state.incorrect++;
+  state.index++;
+  if (state.index >= state.deck.length) showResults();
+  else showQuestion();
+}
+
+function showResults() {
+  const total = state.correct + state.incorrect;
+  const pct   = Math.round(state.correct / total * 100);
+
+  document.getElementById('res-score').textContent     = `${state.correct}/${total}`;
+  document.getElementById('res-correct').textContent   = state.correct;
+  document.getElementById('res-incorrect').textContent = state.incorrect;
+
+  const msgs = [
+    [100, 'Perfect score — every chord nailed!'],
+    [ 80, 'Great job! Almost flawless.'],
+    [ 60, 'Solid effort. Keep practicing.'],
+    [ 40, 'Getting there — more reps needed.'],
+    [  0, 'Keep at it — repetition is everything.'],
+  ];
+  document.getElementById('res-msg').textContent = msgs.find(([t]) => pct >= t)[1];
+
+  showScreen('results');
+}
+
+function retryGame()  { startGame(state.difficulty); }
+function showMenu()   { showScreen('menu'); }
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+}
+</script>
+</body>
+</html>
